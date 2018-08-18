@@ -1,0 +1,242 @@
+{
+    "AWSTemplateFormatVersion" : "2010-09-09",
+    "Description": "ABC template containing three instances",
+    "Parameters": {
+        "ImageId" : {
+            "Description": "EC2 instance image to use for the instances",
+            "Type" : "AWS::EC2::Image::Id"
+        },
+        "InstanceType" : {
+            "Description": "EC2 instance type to use for the instances",
+            "Type" : "String"
+        },
+        "KeyName" : {
+            "Description": "Key to access EC2 instances",
+            "Type" : "String"
+        },
+        "VpcId" : {
+            "Description": "Default VpcId",
+            "Type" : "String"
+        },
+        "SubnetId" : {
+            "Description": "Default SubnetId",
+            "Type" : "String"
+        },
+        "PrivateIpA" : {
+            "Description": "Private ip A",
+            "Type" : "String"
+        },
+        "PrivateIpB" : {
+            "Description": "Private ip B",
+            "Type" : "String"
+        },
+        "PrivateIpC" : {
+            "Description": "Private ip C",
+            "Type" : "String"
+        },
+        "sreUserName" : {
+            "Description": "SRE username",
+            "Type" : "String"
+        },
+        "sreDotSshDir" : {
+            "Description": "Dot SSH dir for SRE user",
+            "Type" : "String"
+        }
+    },
+    "Resources" : {
+        "abcSecurityGroup" : {
+            "Type" : "AWS::EC2::SecurityGroup",
+            "Properties" : {
+                "VpcId" : { "Ref" : "VpcId" },
+                "GroupDescription" : "Allow http/ssh to hosts",
+                "SecurityGroupIngress" : [{
+                    "IpProtocol" : "tcp",
+                    "FromPort" : 80,
+                    "ToPort" : 80,
+                    "CidrIp" : "0.0.0.0/0"
+                },
+                {
+                    "IpProtocol" : "tcp",
+                    "FromPort" : 22,
+                    "ToPort" : 22,
+                    "CidrIp" : "0.0.0.0/0"
+                }],
+                "SecurityGroupEgress" : [{
+                    "IpProtocol" : "tcp",
+                    "FromPort" : 0,
+                    "ToPort" : 65535,
+                    "CidrIp" : "0.0.0.0/0"
+                }],
+                "Tags" : [ {"Key" : "project", "Value" : "ABC"} ]
+            }
+        },
+        "InstanceA" : {
+            "Type" : "AWS::EC2::Instance",
+            "DependsOn" : "abcSecurityGroup",
+            "Properties" : {
+                "ImageId" : { "Ref" : "ImageId" },
+                "KeyName" : { "Ref" : "KeyName" },
+                "InstanceType" : { "Ref": "InstanceType" },
+                "NetworkInterfaces" : [{
+                    "PrivateIpAddress" : { "Ref":"PrivateIpA" },
+                    "AssociatePublicIpAddress" : "True",
+                    "DeleteOnTermination" : "True",
+                    "SubnetId" : { "Ref" : "SubnetId" },
+                    "DeviceIndex" : "0",
+                    "GroupSet" : [ { "Ref" : "abcSecurityGroup" } ]}],
+                "BlockDeviceMappings" : [{
+                    "DeviceName" : "/dev/sda1",
+                    "Ebs" : {
+                        "DeleteOnTermination" : true
+                        }}],
+                "Tags" : [ {"Key" : "Name", "Value" : "A"},
+                           {"Key" : "project", "Value" : "ABC"} ],
+                "UserData" : { "Fn::Base64" : { "Fn::Join" : ["", [
+                    "#!/bin/bash -Cvxe\n",
+                    "yum -y install haproxy\n",
+                    "cp /etc/haproxy/haproxy.cfg{,.original}\n",
+                    "rm -f /etc/haproxy/haproxy.cfg\n",
+                    "cat<<EOF > /etc/haproxy/haproxy.cfg\n",
+                    "global\n",
+                    "\tdaemon\n",
+                    "\tmaxconn 256\n",
+                    "\tlog 127.0.0.1 local2 info\n",
+                    "\tchroot /var/lib/haproxy\n",
+                    "\tpidfile /var/run/haproxy.pid\n",
+                    "\tuser haproxy\n",
+                    "\tgroup haproxy\n",
+                    "defaults\n",
+                    "\tmode http\n",
+                    "\toption httplog\n",
+                    "\tlog global\n",
+                    "\ttimeout connect 5000ms\n",
+                    "\ttimeout client 50000ms\n",
+                    "\ttimeout server 50000ms\n",
+                    "frontend http-in\n",
+                    "\tbind *:80\n",
+                    "\tdefault_backend servers\n",
+                    "backend servers\n",
+                    "\tbalance roundrobin\n",
+                    "\tserver server1 ", { "Ref":"PrivateIpB" }, ":80 maxconn 32 check\n",
+                    "\tserver server2 ", { "Ref":"PrivateIpC" }, ":80 maxconn 32 check\n",
+                    "EOF\n",
+                    "systemctl enable haproxy\n",
+                    "systemctl start haproxy\n",
+                    "useradd -m ", { "Ref" : "sreUserName" }, "\n",
+                    "mkdir -p ", { "Ref" : "sreDotSshDir" }, "\n",
+                    "chmod 0700 ", { "Ref" : "sreDotSshDir" }, "\n",
+                    "cat<<EOF > ", { "Ref" : "sreDotSshDir" }, "/authorized_keys\n",
+                    "ssh-rsa AAAAB3NzaC1yc2EAAAABIwAAAQEAw82BPy7/R8AeYHXzSmJEM7V34EScOBdBtzM8X/IZYbliHxzmcNWyTCC4jFZm6AUeupcTlLT31rnmkhxIcTvFKV61Y/yCX1j89E6fndwsxOz+NvoXNtXRu6lEejA+5nvET4D4Zqj/OT7RtsN336oTC/IJ6WT4AwXN21qLc2CNdZGhGY8sOoX9RRWvMU2qC83XLclhhcswcoJzI0rd7QsYXNdcxwB9MeMxdm9f9fQtgWhcuENxXbIqVjVB4zQQ3iVMDdDOIisticXFbxXcYa3T1MphSFephHmfX1PQCl6WS4H/WtkIGGuRSm7LEQMZ5SDEjZyW0HLap22EXZ8AcrFH6Q==rjoseph@robert-josephs-MacBook-Air.local\n",
+                    "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQC5b/JwnGO6Nd3buwXog0w6+h65KSPDdvWiJ12derGKVyT1jKESn0pbNkuHv6NM7/xwoftUsjBO2EUdjsCUj2cbz0XDEBNhUr7hgZuO2cX3vlmaMnrC43lvjKp0jL5uEONa5ucNLwO5d2oFdZ61dXpMV11+P0ftnntwBGzW90cB9ADQyHeN0+RZ9MNUYEkMF3qotqTeGgRioimEA3RnPUFpOcQPf7aZBlNRfrUWAtxtSSEnGr92gFAGaS7noYRyPm75qZ9Q1CdXwVTCSn1ma067HvqnBi75ZMg4sZbQXWrrt4VE8hpd69vNszeRWnRwnJMH7/P+42bEW+DwXf5VEqQl jymmi@NYO-MBP-JYMMI.local\n",
+                    "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQCyBZFUj1ZJ3keKuypCU5M8VNqGyyPzV2Qw+qI2sdHLdOROh53k0pir4q/Mef0ZxMMium4k/f0m5+qMegg+RWKuqKCg5QhA659qfd8X6v1f06aQMHC19GfaDlEe8o3NfW2XyQFne8fvpiY9joVLUWecPCP3g55esglWV7egbLBpSovE/v2VJWibfdJh4w3Oz98J9i5xyzY0Lpao6DEaa7ODfCLgehu83ECSBEACw5WFEmxaK02vAFrOY7yrNVhdmvDWSXhfrNT02BwB0BmgzJvfO8Rc7saHcW6vUlhDlLCCl0MWuWAH/ayC1TC32SnRiL9Ly0IuAlTs2mJ6sRijv9HN root@it-deploy\n",
+                    "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQCyYv+quzpnKKTPG89lRKgVnrD/DJ9dHKWjiigiPrllkjJp4nCloa4vfcc/MMGT+UXao8Tqb7SS3Xa6ETKunuM0KWLFoJalTfqVv3mlodUop8VygqznSFFDoGR2hN8eyi0OCH6KW+Yv8MXCfO016l3n4lt/mekMJC74W/wwvRVKEwwU75kSRkzXzjwOosD0Q9b0BFFKIqo6RkWMrOLUtkgGQwl94/QNuzrxaNXsJMx2h0DeGzy+upXYM4MWZLf8ppwsszqSfj3ZHXe/87SxP5MXtIwurUH0J3ZhPSgipM5sl+E6Yf0+kjhrmAyyOVE4mCWs2x2s11fqs8wGM0HgTbH3 rbright@rbright.local\n",
+                    "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQDGdvTacTGoEhZZXYG4KoTsxW6aU9SM5kcdg7N5SGDdFLi83H3dBJQ1GkNvHSfdyC0eyd+gUMJYrCiFhtuuodP1wGtH152bQ0jgy7spPwf7yHXhIKcAVGrzUtSC/M0ArZfe2iZJjC1vwDWRtEGgGxZFas3XtflK+tRKClDK7oxsB/Dtl7Xd1DEG1EP6MXuw9g10SDvgFLXVmmHtSpPI/Ps5GG4c+VJ7Oa5mNwwz6QOtnHANFg4GFD/4pjfYX1WpHqKzo+YCzTKjKsMKsYkrGGQxuEKh1QjjbA01oij+itDb5ZQf9M9dtwAqW4pBkSCMJTWNiaS/g5Plat169voi3RRR root@it-deploy\n",
+                    "EOF\n",
+                    "chmod 0600 ", { "Ref" : "sreDotSshDir" }, "/authorized_keys\n",
+                    "chown -R ", { "Ref" : "sreUserName" }, ":", { "Ref" : "sreUserName" }, " /home/sre/.ssh\n"
+                    ]]}
+                 }
+            }
+        },
+        "InstanceB": {
+            "Type": "AWS::EC2::Instance",
+            "DependsOn" : "abcSecurityGroup",
+            "Properties" : {
+                "ImageId" : { "Ref" : "ImageId" },
+                "KeyName" : { "Ref" : "KeyName" },
+                "InstanceType" : { "Ref": "InstanceType" },
+                "NetworkInterfaces" : [{
+                    "PrivateIpAddress" : { "Ref":"PrivateIpB" },
+                    "AssociatePublicIpAddress" : "True",
+                    "DeleteOnTermination" : "True",
+                    "SubnetId" : { "Ref" : "SubnetId" },
+                    "DeviceIndex" : "0",
+                    "GroupSet" : [ { "Ref" : "abcSecurityGroup" } ]
+                }],
+                "BlockDeviceMappings" : [{
+                    "DeviceName" : "/dev/sda1",
+                    "Ebs" : {
+                        "DeleteOnTermination" : true
+                        }}],
+                "Tags" : [ {"Key" : "Name", "Value" : "B"},
+                           {"Key" : "project", "Value" : "ABC"} ],
+                "UserData" : { "Fn::Base64" : { "Fn::Join" : ["", [
+                    "#!/bin/bash -Cvxe\n",
+                    "yum -y install epel-release\n",
+                    "yum -y install nginx\n",
+                    "cat<<EOF > /etc/nginx/default.d/helloz.conf\n",
+                    "location /helloz {\n",
+                    "\tadd_header Content-Type text/plain;\n",
+                    "\treturn 200 'B';\n",
+                    "}\n",
+                    "EOF\n",
+                    "systemctl enable nginx\n",
+                    "systemctl start nginx\n",
+                    "useradd -m ", { "Ref" : "sreUserName" }, "\n",
+                    "mkdir -p ", { "Ref" : "sreDotSshDir" }, "\n",
+                    "chmod 0700 ", { "Ref" : "sreDotSshDir" }, "\n",
+                    "cat<<EOF > ", { "Ref" : "sreDotSshDir" }, "/authorized_keys\n",
+                    "ssh-rsa AAAAB3NzaC1yc2EAAAABIwAAAQEAw82BPy7/R8AeYHXzSmJEM7V34EScOBdBtzM8X/IZYbliHxzmcNWyTCC4jFZm6AUeupcTlLT31rnmkhxIcTvFKV61Y/yCX1j89E6fndwsxOz+NvoXNtXRu6lEejA+5nvET4D4Zqj/OT7RtsN336oTC/IJ6WT4AwXN21qLc2CNdZGhGY8sOoX9RRWvMU2qC83XLclhhcswcoJzI0rd7QsYXNdcxwB9MeMxdm9f9fQtgWhcuENxXbIqVjVB4zQQ3iVMDdDOIisticXFbxXcYa3T1MphSFephHmfX1PQCl6WS4H/WtkIGGuRSm7LEQMZ5SDEjZyW0HLap22EXZ8AcrFH6Q==rjoseph@robert-josephs-MacBook-Air.local\n",
+                    "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQC5b/JwnGO6Nd3buwXog0w6+h65KSPDdvWiJ12derGKVyT1jKESn0pbNkuHv6NM7/xwoftUsjBO2EUdjsCUj2cbz0XDEBNhUr7hgZuO2cX3vlmaMnrC43lvjKp0jL5uEONa5ucNLwO5d2oFdZ61dXpMV11+P0ftnntwBGzW90cB9ADQyHeN0+RZ9MNUYEkMF3qotqTeGgRioimEA3RnPUFpOcQPf7aZBlNRfrUWAtxtSSEnGr92gFAGaS7noYRyPm75qZ9Q1CdXwVTCSn1ma067HvqnBi75ZMg4sZbQXWrrt4VE8hpd69vNszeRWnRwnJMH7/P+42bEW+DwXf5VEqQl jymmi@NYO-MBP-JYMMI.local\n",
+                    "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQCyBZFUj1ZJ3keKuypCU5M8VNqGyyPzV2Qw+qI2sdHLdOROh53k0pir4q/Mef0ZxMMium4k/f0m5+qMegg+RWKuqKCg5QhA659qfd8X6v1f06aQMHC19GfaDlEe8o3NfW2XyQFne8fvpiY9joVLUWecPCP3g55esglWV7egbLBpSovE/v2VJWibfdJh4w3Oz98J9i5xyzY0Lpao6DEaa7ODfCLgehu83ECSBEACw5WFEmxaK02vAFrOY7yrNVhdmvDWSXhfrNT02BwB0BmgzJvfO8Rc7saHcW6vUlhDlLCCl0MWuWAH/ayC1TC32SnRiL9Ly0IuAlTs2mJ6sRijv9HN root@it-deploy\n",
+                    "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQCyYv+quzpnKKTPG89lRKgVnrD/DJ9dHKWjiigiPrllkjJp4nCloa4vfcc/MMGT+UXao8Tqb7SS3Xa6ETKunuM0KWLFoJalTfqVv3mlodUop8VygqznSFFDoGR2hN8eyi0OCH6KW+Yv8MXCfO016l3n4lt/mekMJC74W/wwvRVKEwwU75kSRkzXzjwOosD0Q9b0BFFKIqo6RkWMrOLUtkgGQwl94/QNuzrxaNXsJMx2h0DeGzy+upXYM4MWZLf8ppwsszqSfj3ZHXe/87SxP5MXtIwurUH0J3ZhPSgipM5sl+E6Yf0+kjhrmAyyOVE4mCWs2x2s11fqs8wGM0HgTbH3 rbright@rbright.local\n",
+                    "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQDGdvTacTGoEhZZXYG4KoTsxW6aU9SM5kcdg7N5SGDdFLi83H3dBJQ1GkNvHSfdyC0eyd+gUMJYrCiFhtuuodP1wGtH152bQ0jgy7spPwf7yHXhIKcAVGrzUtSC/M0ArZfe2iZJjC1vwDWRtEGgGxZFas3XtflK+tRKClDK7oxsB/Dtl7Xd1DEG1EP6MXuw9g10SDvgFLXVmmHtSpPI/Ps5GG4c+VJ7Oa5mNwwz6QOtnHANFg4GFD/4pjfYX1WpHqKzo+YCzTKjKsMKsYkrGGQxuEKh1QjjbA01oij+itDb5ZQf9M9dtwAqW4pBkSCMJTWNiaS/g5Plat169voi3RRR root@it-deploy\n",
+                    "EOF\n",
+                    "chmod 0600 ", { "Ref" : "sreDotSshDir" }, "/authorized_keys\n",
+                    "chown -R ", { "Ref" : "sreUserName" }, ":", { "Ref" : "sreUserName" }, " /home/sre/.ssh\n"
+                    ]]}
+                 }
+            }
+        },
+        "InstanceC": {
+            "Type": "AWS::EC2::Instance",
+            "DependsOn" : "abcSecurityGroup",
+            "Properties" : {
+                "ImageId" : { "Ref" : "ImageId" },
+                "KeyName" : { "Ref" : "KeyName" },
+                "InstanceType" : { "Ref": "InstanceType" },
+                "NetworkInterfaces" : [{
+                    "PrivateIpAddress" : { "Ref":"PrivateIpC" },
+                    "AssociatePublicIpAddress" : "True",
+                    "DeleteOnTermination" : "True",
+                    "SubnetId" : { "Ref" : "SubnetId" },
+                    "DeviceIndex" : "0",
+                    "GroupSet" : [ { "Ref" : "abcSecurityGroup" } ]
+                }],
+                "BlockDeviceMappings" : [{
+                    "DeviceName" : "/dev/sda1",
+                    "Ebs" : {
+                        "DeleteOnTermination" : true
+                        }}],
+                "Tags" : [ {"Key" : "Name", "Value" : "C"},
+                           {"Key" : "project", "Value" : "ABC"} ],
+                "UserData" : { "Fn::Base64" : { "Fn::Join" : ["", [
+                    "#!/bin/bash -Cvxe\n",
+                    "yum -y install epel-release\n",
+                    "yum -y install nginx\n",
+                    "cat<<EOF > /etc/nginx/default.d/helloz.conf\n",
+                    "location /helloz {\n",
+                    "\tadd_header Content-Type text/plain;\n",
+                    "\treturn 200 'C';\n",
+                    "}\n",
+                    "EOF\n",
+                    "systemctl enable nginx\n",
+                    "systemctl start nginx\n",
+                    "useradd -m ", { "Ref" : "sreUserName" }, "\n",
+                    "mkdir -p ", { "Ref" : "sreDotSshDir" }, "\n",
+                    "chmod 0700 ", { "Ref" : "sreDotSshDir" }, "\n",
+                    "cat<<EOF > ", { "Ref" : "sreDotSshDir" }, "/authorized_keys\n",
+                    "ssh-rsa AAAAB3NzaC1yc2EAAAABIwAAAQEAw82BPy7/R8AeYHXzSmJEM7V34EScOBdBtzM8X/IZYbliHxzmcNWyTCC4jFZm6AUeupcTlLT31rnmkhxIcTvFKV61Y/yCX1j89E6fndwsxOz+NvoXNtXRu6lEejA+5nvET4D4Zqj/OT7RtsN336oTC/IJ6WT4AwXN21qLc2CNdZGhGY8sOoX9RRWvMU2qC83XLclhhcswcoJzI0rd7QsYXNdcxwB9MeMxdm9f9fQtgWhcuENxXbIqVjVB4zQQ3iVMDdDOIisticXFbxXcYa3T1MphSFephHmfX1PQCl6WS4H/WtkIGGuRSm7LEQMZ5SDEjZyW0HLap22EXZ8AcrFH6Q==rjoseph@robert-josephs-MacBook-Air.local\n",
+                    "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQC5b/JwnGO6Nd3buwXog0w6+h65KSPDdvWiJ12derGKVyT1jKESn0pbNkuHv6NM7/xwoftUsjBO2EUdjsCUj2cbz0XDEBNhUr7hgZuO2cX3vlmaMnrC43lvjKp0jL5uEONa5ucNLwO5d2oFdZ61dXpMV11+P0ftnntwBGzW90cB9ADQyHeN0+RZ9MNUYEkMF3qotqTeGgRioimEA3RnPUFpOcQPf7aZBlNRfrUWAtxtSSEnGr92gFAGaS7noYRyPm75qZ9Q1CdXwVTCSn1ma067HvqnBi75ZMg4sZbQXWrrt4VE8hpd69vNszeRWnRwnJMH7/P+42bEW+DwXf5VEqQl jymmi@NYO-MBP-JYMMI.local\n",
+                    "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQCyBZFUj1ZJ3keKuypCU5M8VNqGyyPzV2Qw+qI2sdHLdOROh53k0pir4q/Mef0ZxMMium4k/f0m5+qMegg+RWKuqKCg5QhA659qfd8X6v1f06aQMHC19GfaDlEe8o3NfW2XyQFne8fvpiY9joVLUWecPCP3g55esglWV7egbLBpSovE/v2VJWibfdJh4w3Oz98J9i5xyzY0Lpao6DEaa7ODfCLgehu83ECSBEACw5WFEmxaK02vAFrOY7yrNVhdmvDWSXhfrNT02BwB0BmgzJvfO8Rc7saHcW6vUlhDlLCCl0MWuWAH/ayC1TC32SnRiL9Ly0IuAlTs2mJ6sRijv9HN root@it-deploy\n",
+                    "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQCyYv+quzpnKKTPG89lRKgVnrD/DJ9dHKWjiigiPrllkjJp4nCloa4vfcc/MMGT+UXao8Tqb7SS3Xa6ETKunuM0KWLFoJalTfqVv3mlodUop8VygqznSFFDoGR2hN8eyi0OCH6KW+Yv8MXCfO016l3n4lt/mekMJC74W/wwvRVKEwwU75kSRkzXzjwOosD0Q9b0BFFKIqo6RkWMrOLUtkgGQwl94/QNuzrxaNXsJMx2h0DeGzy+upXYM4MWZLf8ppwsszqSfj3ZHXe/87SxP5MXtIwurUH0J3ZhPSgipM5sl+E6Yf0+kjhrmAyyOVE4mCWs2x2s11fqs8wGM0HgTbH3 rbright@rbright.local\n",
+                    "ssh-rsa AAAAB3NzaC1yc2EAAAADAQABAAABAQDGdvTacTGoEhZZXYG4KoTsxW6aU9SM5kcdg7N5SGDdFLi83H3dBJQ1GkNvHSfdyC0eyd+gUMJYrCiFhtuuodP1wGtH152bQ0jgy7spPwf7yHXhIKcAVGrzUtSC/M0ArZfe2iZJjC1vwDWRtEGgGxZFas3XtflK+tRKClDK7oxsB/Dtl7Xd1DEG1EP6MXuw9g10SDvgFLXVmmHtSpPI/Ps5GG4c+VJ7Oa5mNwwz6QOtnHANFg4GFD/4pjfYX1WpHqKzo+YCzTKjKsMKsYkrGGQxuEKh1QjjbA01oij+itDb5ZQf9M9dtwAqW4pBkSCMJTWNiaS/g5Plat169voi3RRR root@it-deploy\n",
+                    "EOF\n",
+                    "chmod 0600 ", { "Ref" : "sreDotSshDir" }, "/authorized_keys\n",
+                    "chown -R ", { "Ref" : "sreUserName" }, ":", { "Ref" : "sreUserName" }, " /home/sre/.ssh\n"
+                    ]]}
+                 }
+            }
+        }
+    }
+}
