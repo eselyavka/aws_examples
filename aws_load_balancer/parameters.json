@@ -1,0 +1,42 @@
+[
+  {
+    "ParameterKey": "ImageId",
+    "ParameterValue": "ami-4bf3d731"
+  }, 
+  {
+    "ParameterKey": "KeyName",
+    "ParameterValue": "abc"
+  }, 
+  {
+    "ParameterKey": "InstanceType",
+    "ParameterValue": "t2.micro"
+  },
+  {
+    "ParameterKey": "VpcId",
+    "ParameterValue": "vpc-6d30380b"
+  },
+  {
+    "ParameterKey": "SubnetId",
+    "ParameterValue": "subnet-09856825"
+  },
+  {
+    "ParameterKey": "PrivateIpA",
+    "ParameterValue": "172.31.64.10"
+  },
+  {
+    "ParameterKey": "PrivateIpB",
+    "ParameterValue": "172.31.64.11"
+  },
+  {
+    "ParameterKey": "PrivateIpC",
+    "ParameterValue": "172.31.64.12"
+  },
+  {
+    "ParameterKey": "sreUserName",
+    "ParameterValue": "sre"
+  },
+  {
+    "ParameterKey": "sreDotSshDir",
+    "ParameterValue": "/home/sre/.ssh"
+  }
+]
