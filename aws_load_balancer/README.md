@@ -8,24 +8,26 @@ These instructions will get you a copy of the project up and running on your loc
 ### Prerequisites
 ```
 Bash - 4.x
-Python - 2.7
-aws-cli/1.11.115
+Python - 2.7.x
+aws-cli - 1.11.115
 ```
 
 ## Running the ABC project
 
 #### I. Preparation steps
-Modify `parameters.json` according your aws infrastructure, you have to specify `KeyName`, `VpcId`, `subnetId` inside this VPC,
- VPC must be public, `privateIp` addresses for each of the hosts
+Modify `parameters.json` according to your aws infrastructure, you have to specify
+`KeyName`, `SubnetId` `VpcId` - VPC must be public and `privateIp[A-C]` addresses for each of the hosts
 
 #### II. Execution steps
 From the root directory execute the bash script
+
 ```
 bash run.sh [path_to_json_template] [path_to_json_parameters] [stack_name]
 ```
+
 * `path_to_json_template` - cloudformation template json file path, default to `file://cf.json`
 * `path_to_json_parameters` - cloudformation parameters json file path, default to `file://parameters.json`
- * `stack_name` - name of the stack, default to `abc`
+* `stack_name` - name of the stack, default to `abc`
 
 During the execution script will perform several checks:
 * check that both B and C are healthy
@@ -35,20 +37,35 @@ During the execution script will perform several checks:
 
 ## Deployment
 Deployment could be accomplished with this one-linear
+
 ```
 mkdir -p $HOME/deploy && \
-git clone git@github.com:eselyavka/aws_examples.git && \
-cd aws_load_balancer
+git clone git@github.com:eselyavka/aws_examples.git $HOME/deploy && \
+cd $HOME/deploy/aws_load_balancer
 ```
+
+## Troubleshooting and additional testing
+To get ssh access to particular host you can retrieve it's public IP address with the command below
+
+```
+aws ec2 describe-instances \
+--filters 'Name=instance-state-name,Values=running' \
+'Name=tag:Name,Values=LETTER' \
+--query 'Reservations[*].Instances[*].PublicIpAddress' \
+--output=text
+```
+
+* `LETTER` - one of the letter from the set - **A**, **B** or **C**
 
 ## Uninstall
-When you are done with the testing just invoke
-```
-aws cloudformation delete-stack --stack-name <stack_name>
+When you are done with the testing, invoke the command below to delete a stack
 
 ```
+aws cloudformation delete-stack --stack-name <stack_name> && \
+rm -rf $HOME/deploy
+```
 
-## Versioning
+## Version
 `1.0.0`
 
 ## Authors
